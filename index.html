@@ -1,8 +1,9 @@
 <!DOCTYPE html>
-<html lang="en" class=""><head><script>window.livecodes = window.livecodes || {};</script><title>Nav token </title><meta name="title" content="Nav token "><meta name="description" content="Inbox with voice "><meta charset="UTF-8">
+<html lang="en" class=""><head><script>window.livecodes = window.livecodes || {};</script><title>Nav token </title><meta name="title" content="Nav token "><meta name="description" content="Chat msg to admin "><meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0"><link rel="stylesheet" href="./style.css"><script src="https://cdn.jsdelivr.net/npm/es-module-shims@1.10.0/dist/es-module-shims.js" async=""></script><script type="importmap">{
   "imports": {}
 }</script></head><body>
+
 
 
 
@@ -20,6 +21,7 @@
         .notification-dropdown.show { display: block; }
         .notification-item.unread { background-color: #eef2ff; }
         .hidden { display: none; }
+        .modal { background-color: rgba(0,0,0,0.5); }
     </style>
 
 
@@ -34,6 +36,9 @@
                 </div>
                 <button type="submit" class="w-full bg-indigo-600 text-white py-2 px-4 rounded-md hover:bg-indigo-700 font-semibold">Check Status</button>
             </form>
+            <p class="text-center text-sm mt-6">
+                Having trouble? <button id="urgent-chat-btn" class="font-semibold text-indigo-600 hover:underline">Chat with Admin</button>
+            </p>
              <p class="text-center text-xs text-gray-400 mt-4"><a href="Pc.html" class="hover:underline">Back to Project Hub</a></p>
         </div>
     </div>
@@ -93,6 +98,30 @@
             <div id="inbox-list" class="overflow-y-auto p-2">
                 <!-- Messages will be rendered here as a table -->
             </div>
+        </div>
+    </div>
+
+    <div id="urgent-chat-modal" class="fixed inset-0 z-50 flex items-center justify-center p-4 hidden modal">
+        <div class="bg-white rounded-lg shadow-xl w-full max-w-md">
+            <div class="p-4 border-b flex justify-between items-center">
+                <h3 class="text-lg font-bold">Send Urgent Message to Admin</h3>
+                <button id="urgent-chat-close-btn" class="text-gray-500 hover:text-gray-800 text-2xl">×</button>
+            </div>
+            <form id="urgent-chat-form" class="p-6 space-y-4">
+                <div>
+                    <label for="urgent-name" class="block text-sm font-medium text-gray-700">Your Name</label>
+                    <input type="text" id="urgent-name" class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md" required="">
+                </div>
+                <div>
+                    <label for="urgent-mobile" class="block text-sm font-medium text-gray-700">Your Mobile Number</label>
+                    <input type="tel" id="urgent-mobile" class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md" required="">
+                </div>
+                <div>
+                    <label for="urgent-message" class="block text-sm font-medium text-gray-700">Message</label>
+                    <textarea id="urgent-message" rows="3" class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md" required="" placeholder="e.g., I need a token urgently but I'm getting an error."></textarea>
+                </div>
+                <button type="submit" class="w-full bg-red-600 text-white py-2 px-4 rounded-md hover:bg-red-700 font-semibold">Send Urgent Message</button>
+            </form>
         </div>
     </div>
 
@@ -477,10 +506,45 @@
             inboxCloseBtn.addEventListener('click', () => {
                 inboxModal.classList.add('hidden');
             });
+
+            // Urgent Chat Listeners
+            const urgentChatBtn = document.getElementById('urgent-chat-btn');
+            const urgentChatModal = document.getElementById('urgent-chat-modal');
+            const urgentChatCloseBtn = document.getElementById('urgent-chat-close-btn');
+            const urgentChatForm = document.getElementById('urgent-chat-form');
+
+            urgentChatBtn.addEventListener('click', () => urgentChatModal.classList.remove('hidden'));
+            urgentChatCloseBtn.addEventListener('click', () => urgentChatModal.classList.add('hidden'));
+            
+            urgentChatForm.addEventListener('submit', async (e) => {
+                e.preventDefault();
+                const name = document.getElementById('urgent-name').value.trim();
+                const mobile = document.getElementById('urgent-mobile').value.trim();
+                const message = document.getElementById('urgent-message').value.trim();
+
+                if (!name || !mobile || !message) {
+                    alert('Please fill all fields.');
+                    return;
+                }
+
+                try {
+                    const urgentRef = db.ref('urgentAdminMessages').push();
+                    await urgentRef.set({
+                        name, mobile, message,
+                        timestamp: firebase.database.ServerValue.TIMESTAMP,
+                        status: 'new'
+                    });
+                    alert('Your urgent message has been sent to the admin.');
+                    urgentChatForm.reset();
+                    urgentChatModal.classList.add('hidden');
+                } catch (error) {
+                    console.error('Failed to send urgent message:', error);
+                    alert('Could not send message. Please try again.');
+                }
+            });
         });
 
         window.deleteNotification = deleteNotification;
     </script>
-
 
 <script src="./script.js"></script></body></html>
