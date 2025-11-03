@@ -1,0 +1,198 @@
+<!DOCTYPE html>
+<html lang="en" class=""><head><script>window.livecodes = window.livecodes || {};</script><title>Nav token </title><meta name="title" content="Nav token "><meta name="description" content="Token app "><meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0"><link rel="stylesheet" href="./style.css"><script src="https://cdn.jsdelivr.net/npm/es-module-shims@1.10.0/dist/es-module-shims.js" async=""></script><script type="importmap">{
+  "imports": {}
+}</script></head><body>
+
+
+
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Your Token Status</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.15.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.15.0/firebase-database-compat.js"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
+        body { font-family: 'Inter', sans-serif; background-color: #f3f4f6; }
+    </style>
+
+
+    <div id="login-view" class="min-h-screen flex items-center justify-center p-4">
+        <div class="w-full max-w-sm mx-auto bg-white p-8 rounded-2xl shadow-lg">
+            <h2 class="text-2xl font-bold text-center mb-2">Check Your Token</h2>
+            <p class="text-center text-gray-600 mb-6">Enter the mobile number you provided at the reception.</p>
+            <form id="login-form">
+                <div class="mb-4">
+                    <label for="mobile-number" class="block text-sm font-medium text-gray-700">Mobile Number</label>
+                    <input type="tel" id="mobile-number" class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm" required="" placeholder="e.g., 9876543210">
+                </div>
+                <button type="submit" class="w-full bg-indigo-600 text-white py-2 px-4 rounded-md hover:bg-indigo-700 font-semibold">Check Status</button>
+            </form>
+             <p class="text-center text-xs text-gray-400 mt-4"><a href="Pc.html" class="hover:underline">Back to Project Hub</a></p>
+        </div>
+    </div>
+    
+    <div id="main-view" class="hidden w-full max-w-md mx-auto p-4 pt-12 text-center">
+        <header class="mb-8">
+            <h1 class="text-xl font-bold">Welcome, <span id="customer-name-display"></span>!</h1>
+            <p class="text-gray-600">Here is your current queue status.</p>
+        </header>
+        
+        <div id="status-content" class="space-y-6">
+             <div class="bg-white p-6 rounded-lg shadow-md">
+                <p class="text-sm font-semibold text-gray-500">Currently Serving</p>
+                <p id="serving-token" class="text-6xl font-extrabold text-green-600">--</p>
+            </div>
+             <div class="bg-indigo-600 text-white p-8 rounded-lg shadow-xl">
+                <p class="text-lg font-semibold text-indigo-200">Your Token Number</p>
+                <p id="my-token" class="text-8xl font-extrabold">--</p>
+            </div>
+             <div class="bg-white p-6 rounded-lg shadow-md">
+                <p class="text-sm font-semibold text-gray-500">People Ahead of You</p>
+                <p id="people-ahead" class="text-6xl font-extrabold text-yellow-600">--</p>
+                <p id="wait-time" class="text-gray-500 mt-2">Estimated Wait: -- minutes</p>
+            </div>
+        </div>
+
+        <div id="my-appointment-details" class="mt-8 text-left bg-white p-4 rounded-lg shadow-sm text-sm">
+             <!-- Details injected here -->
+        </div>
+        
+        <button id="logout-btn" class="mt-8 text-sm text-red-500 hover:underline">Check Another Number</button>
+    </div>
+    
+    <audio id="notification-sound" src="https://freesound.org/data/previews/415/415763_6142149-lq.mp3" preload="auto"></audio>
+
+    <script>
+        const firebaseConfig = {
+            apiKey: "AIzaSyC0_DQIiyaVQllFH4pxH1Dm3r2kFXXoOgc",
+            authDomain: "navrosetailorapp.firebaseapp.com",
+            databaseURL: "https://navrosetailorapp-default-rtdb.asia-southeast1.firebasedatabase.app",
+            projectId: "navrosetailorapp"
+        };
+        
+        let db;
+        let currentUserMobile = null;
+        const AVG_TIME_PER_PERSON = 5; // minutes
+
+        const loginView = document.getElementById('login-view');
+        const mainView = document.getElementById('main-view');
+
+        function speak(text) {
+            if (!('speechSynthesis' in window)) {
+                console.warn("Speech synthesis not supported.");
+                return;
+            }
+            // A fix for some browsers where getVoices() is not immediately available
+            if (speechSynthesis.getVoices().length === 0) {
+                speechSynthesis.onvoiceschanged = () => {
+                    performSpeak(text);
+                };
+            } else {
+                performSpeak(text);
+            }
+        }
+        
+        function performSpeak(text) {
+            speechSynthesis.cancel();
+            const utterance = new SpeechSynthesisUtterance(text);
+            utterance.lang = 'hi-IN';
+            utterance.rate = 1.0;
+            let voices = speechSynthesis.getVoices();
+            let hindiVoice = voices.find(voice => voice.lang === 'hi-IN');
+            if (hindiVoice) {
+                utterance.voice = hindiVoice;
+            } else {
+                console.warn('Hindi voice not found, using default.');
+            }
+            speechSynthesis.speak(utterance);
+        }
+
+        function playNotification() {
+            document.getElementById('notification-sound').play().catch(e => console.error("Audio playback error:", e));
+            speak("आपकी बारी आ गई है, कृपया तैयार रहें।");
+        }
+
+        function updateStatusDisplay(queueData) {
+            const myQueueItem = Object.values(queueData).find(c => c.customerMobile === currentUserMobile && c.status !== 'completed');
+            const servingItem = Object.values(queueData).find(c => c.status === 'serving');
+            
+            if (!myQueueItem) {
+                document.getElementById('my-token').textContent = 'N/A';
+                document.getElementById('people-ahead').textContent = '--';
+                document.getElementById('wait-time').textContent = 'You are not currently in the queue.';
+                document.getElementById('my-appointment-details').innerHTML = '';
+                return;
+            }
+            
+            document.getElementById('customer-name-display').textContent = myQueueItem.customerName;
+            document.getElementById('my-token').textContent = myQueueItem.tokenNumber;
+            document.getElementById('serving-token').textContent = servingItem ? servingItem.tokenNumber : '--';
+            document.getElementById('my-appointment-details').innerHTML = `<p><strong>Reason:</strong> ${myQueueItem.appointmentFor}</p><p><strong>Time Entered:</strong> ${new Date(myQueueItem.timestamp).toLocaleTimeString()}</p>`;
+
+            if (myQueueItem.status === 'serving') {
+                document.getElementById('people-ahead').textContent = '0';
+                document.getElementById('wait-time').textContent = 'It\'s your turn now!';
+                if (!myQueueItem.notified) {
+                    playNotification();
+                    // Mark as notified in Firebase
+                    db.ref('tokenQueue/' + myQueueItem.id + '/notified').set(true);
+                }
+            } else { // Waiting
+                const peopleAhead = Object.values(queueData).filter(c => 
+                    c.status === 'waiting' && c.tokenNumber < myQueueItem.tokenNumber
+                ).length;
+                
+                document.getElementById('people-ahead').textContent = peopleAhead;
+                const waitTime = peopleAhead * AVG_TIME_PER_PERSON;
+                document.getElementById('wait-time').textContent = `Estimated Wait: ~${waitTime} minutes`;
+            }
+        }
+        
+        function startQueueListener(mobile) {
+            currentUserMobile = mobile;
+            const queueRef = db.ref('tokenQueue');
+            queueRef.on('value', (snapshot) => {
+                const queueData = snapshot.val() || {};
+                updateStatusDisplay(queueData);
+            });
+        }
+        
+        document.addEventListener('DOMContentLoaded', () => {
+            try {
+                if (!firebase.apps.length) {
+                    firebase.initializeApp(firebaseConfig);
+                }
+                db = firebase.database();
+            } catch (e) {
+                console.error("Firebase initialization failed:", e);
+                alert("Could not connect to the service.");
+            }
+            
+            document.getElementById('login-form').addEventListener('submit', (e) => {
+                e.preventDefault();
+                const mobile = document.getElementById('mobile-number').value.trim();
+                if (/^\d{10}$/.test(mobile)) {
+                    loginView.classList.add('hidden');
+                    mainView.classList.remove('hidden');
+                    startQueueListener(mobile);
+                } else {
+                    alert("Please enter a valid 10-digit mobile number.");
+                }
+            });
+
+            document.getElementById('logout-btn').addEventListener('click', () => {
+                if (currentUserMobile) {
+                    db.ref('tokenQueue').off(); // Detach the listener
+                }
+                currentUserMobile = null;
+                mainView.classList.add('hidden');
+                loginView.classList.remove('hidden');
+                document.getElementById('login-form').reset();
+            });
+        });
+    </script>
+
+
+<script src="./script.js"></script></body></html>
