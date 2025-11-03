@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en" class=""><head><script>window.livecodes = window.livecodes || {};</script><title>Nav token </title><meta name="title" content="Nav token "><meta name="description" content="Token app "><meta charset="UTF-8">
+<html lang="en" class=""><head><script>window.livecodes = window.livecodes || {};</script><title>Nav token </title><meta name="title" content="Nav token "><meta name="description" content="Token no with voice msg "><meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0"><link rel="stylesheet" href="./style.css"><script src="https://cdn.jsdelivr.net/npm/es-module-shims@1.10.0/dist/es-module-shims.js" async=""></script><script type="importmap">{
   "imports": {}
 }</script></head><body>
@@ -49,9 +49,9 @@
                 <p id="my-token" class="text-8xl font-extrabold">--</p>
             </div>
              <div class="bg-white p-6 rounded-lg shadow-md">
-                <p class="text-sm font-semibold text-gray-500">People Ahead of You</p>
-                <p id="people-ahead" class="text-6xl font-extrabold text-yellow-600">--</p>
-                <p id="wait-time" class="text-gray-500 mt-2">Estimated Wait: -- minutes</p>
+                <p class="text-sm font-semibold text-gray-500">Estimated Wait Time</p>
+                <p id="wait-time-countdown" class="text-6xl font-extrabold text-yellow-600">--:--</p>
+                <p id="wait-time-message" class="text-gray-500 mt-2">Calculating...</p>
             </div>
         </div>
 
@@ -75,6 +75,7 @@
         let db;
         let currentUserMobile = null;
         const AVG_TIME_PER_PERSON = 5; // minutes
+        let countdownInterval = null;
 
         const loginView = document.getElementById('login-view');
         const mainView = document.getElementById('main-view');
@@ -115,14 +116,28 @@
         }
 
         function updateStatusDisplay(queueData) {
-            const myQueueItem = Object.values(queueData).find(c => c.customerMobile === currentUserMobile && c.status !== 'completed');
+            if (countdownInterval) clearInterval(countdownInterval);
+
+            const myQueueItem = Object.values(queueData).find(c => c.customerMobile === currentUserMobile && (c.status === 'waiting' || c.status === 'serving'));
             const servingItem = Object.values(queueData).find(c => c.status === 'serving');
             
             if (!myQueueItem) {
-                document.getElementById('my-token').textContent = 'N/A';
-                document.getElementById('people-ahead').textContent = '--';
-                document.getElementById('wait-time').textContent = 'You are not currently in the queue.';
+                alert("No active token found for this mobile no. Check mobile no or contact receptionist to receive new token no.");
+                document.getElementById('logout-btn').click();
+                return;
+            }
+
+            // Handle missed turn
+            if (servingItem && myQueueItem.status === 'waiting' && servingItem.tokenNumber > myQueueItem.tokenNumber) {
+                document.getElementById('status-content').innerHTML = `
+                    <div class="bg-red-100 border-l-4 border-red-500 text-red-700 p-4 rounded-lg shadow-md text-left">
+                        <h3 class="font-bold text-xl">You Missed Your Turn</h3>
+                        <p class="mt-2">Your token #${myQueueItem.tokenNumber} was called.</p>
+                        <p>Please contact the receptionist to get a new token.</p>
+                    </div>
+                `;
                 document.getElementById('my-appointment-details').innerHTML = '';
+                speak("आपकी बारी निकल गयी है। कृपया नया टोकन लें।");
                 return;
             }
             
@@ -132,22 +147,61 @@
             document.getElementById('my-appointment-details').innerHTML = `<p><strong>Reason:</strong> ${myQueueItem.appointmentFor}</p><p><strong>Time Entered:</strong> ${new Date(myQueueItem.timestamp).toLocaleTimeString()}</p>`;
 
             if (myQueueItem.status === 'serving') {
-                document.getElementById('people-ahead').textContent = '0';
-                document.getElementById('wait-time').textContent = 'It\'s your turn now!';
+                document.getElementById('wait-time-countdown').textContent = '00:00';
+                document.getElementById('wait-time-message').textContent = 'It\'s your turn now!';
                 if (!myQueueItem.notified) {
                     playNotification();
-                    // Mark as notified in Firebase
                     db.ref('tokenQueue/' + myQueueItem.id + '/notified').set(true);
                 }
             } else { // Waiting
-                const peopleAhead = Object.values(queueData).filter(c => 
-                    c.status === 'waiting' && c.tokenNumber < myQueueItem.tokenNumber
+                let totalWaitSeconds = 0;
+
+                // Calculate remaining time for the person being served
+                if (servingItem) {
+                    if (servingItem.eta && servingItem.etaSetTimestamp) {
+                        const etaMillis = servingItem.eta * 60 * 1000;
+                        const elapsedMillis = Date.now() - servingItem.etaSetTimestamp;
+                        const remainingMillis = etaMillis - elapsedMillis;
+                        totalWaitSeconds += Math.max(0, remainingMillis / 1000);
+                    } else {
+                        totalWaitSeconds += AVG_TIME_PER_PERSON * 60;
+                    }
+                }
+
+                // Add wait time for people waiting between the serving person and me
+                const peopleInBetween = Object.values(queueData).filter(c => 
+                    c.status === 'waiting' && 
+                    c.tokenNumber < myQueueItem.tokenNumber && 
+                    (servingItem ? c.tokenNumber > servingItem.tokenNumber : true)
                 ).length;
                 
-                document.getElementById('people-ahead').textContent = peopleAhead;
-                const waitTime = peopleAhead * AVG_TIME_PER_PERSON;
-                document.getElementById('wait-time').textContent = `Estimated Wait: ~${waitTime} minutes`;
+                totalWaitSeconds += peopleInBetween * AVG_TIME_PER_PERSON * 60;
+
+                startCountdown(totalWaitSeconds);
             }
+        }
+        
+        function startCountdown(seconds) {
+            let remainingSeconds = Math.floor(seconds);
+            const countdownEl = document.getElementById('wait-time-countdown');
+            const messageEl = document.getElementById('wait-time-message');
+
+            function updateDisplay() {
+                if (remainingSeconds <= 0) {
+                    countdownEl.textContent = '00:00';
+                    messageEl.textContent = 'Your turn is very soon!';
+                    clearInterval(countdownInterval);
+                    return;
+                }
+                const minutes = Math.floor(remainingSeconds / 60);
+                const secs = remainingSeconds % 60;
+                countdownEl.textContent = `${String(minutes).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
+                messageEl.textContent = `Estimated wait time`;
+                remainingSeconds--;
+            }
+
+            updateDisplay();
+            countdownInterval = setInterval(updateDisplay, 1000);
         }
         
         function startQueueListener(mobile) {
@@ -186,6 +240,7 @@
                 if (currentUserMobile) {
                     db.ref('tokenQueue').off(); // Detach the listener
                 }
+                if (countdownInterval) clearInterval(countdownInterval);
                 currentUserMobile = null;
                 mainView.classList.add('hidden');
                 loginView.classList.remove('hidden');
