@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en" class=""><head><script>window.livecodes = window.livecodes || {};</script><title>Nav token </title><meta name="title" content="Nav token "><meta name="description" content="Update bell icon msg "><meta charset="UTF-8">
+<html lang="en" class=""><head><script>window.livecodes = window.livecodes || {};</script><title>Nav token </title><meta name="title" content="Nav token "><meta name="description" content="Update msg "><meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0"><link rel="stylesheet" href="./style.css"><script src="https://cdn.jsdelivr.net/npm/es-module-shims@1.10.0/dist/es-module-shims.js" async=""></script><script type="importmap">{
   "imports": {}
 }</script></head><body>
@@ -167,11 +167,6 @@
             const servingItem = Object.values(queueData).find(c => c.status === 'serving');
             
             if (!myQueueItem) {
-                if (notifications.length > 0) {
-                    notifications = [];
-                    unreadCount = 0;
-                    updateNotificationUI();
-                }
                 alert("No active token found for this mobile no. Check mobile no or contact receptionist to receive new token no.");
                 document.getElementById('logout-btn').click();
                 return;
@@ -307,6 +302,17 @@
                 const data = snapshot.val() || {};
                 const queueData = data.tokenQueue || {};
                 const workerTasks = data.workerTasks || {};
+
+                // --- AUTOMATIC NOTIFICATION CLEANUP ---
+                const myQueueItem = Object.values(queueData).find(c => c.customerMobile === currentUserMobile && (c.status === 'waiting' || c.status === 'serving'));
+                if (!myQueueItem && notifications.length > 0) {
+                    // If my token is no longer in the active queue, clear notifications.
+                    notifications = [];
+                    unreadCount = 0;
+                    updateNotificationUI();
+                }
+                // --- END CLEANUP ---
+
                 updateStatusDisplay(queueData, workerTasks);
             });
         }
